@@ -13,7 +13,7 @@
     
 %% Flags
 
-flag_plots = true;
+flag_plots = false;
 
 
 
@@ -81,9 +81,33 @@ end
 
 %% Segmentation
 
+f1 = ceil(L_noisy1/SpT);                                        % Number of frames Y1
+f2 = ceil(L_noisy2/SpT);                                        % Number of frames Y2
+
+y1 = zeros(512, f1);                                            % Zero-padding
+y2 = zeros(512, f2);                                            % Zero-padding
+
+for i = 1:f1-1
+    y1(1 : SpT, i) = noisy1(SpT*(i-1)+1 : SpT*i, 1);            % Segmenting Y1
+end
+y1(1 : L_noisy1-((f1-1)*SpT)+1, f1) = noisy1(((f1-1)*SpT) : L_noisy1, 1); 
+                                                                % Adding last frame  
+for i = 1:f2-1
+    y2(1 : SpT, i) = noisy2(SpT*(i-1)+1 : SpT*i, 1);            % Segmenting Y1
+end
+y2(1 : L_noisy2-((f2-1)*SpT)+1, f2) = noisy2(((f2-1)*SpT) : L_noisy2, 1); 
+                                                                % Adding last frame 
+
 %% DFT
 
+Y1 = fft(y1);
+Y2 = fft(y2);
+
+% Note: this does a fft for every column, so for every time frame
+
 %% A priori SNR using ML
+
+
 
 %% PSD Estimation
 
