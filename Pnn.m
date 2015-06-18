@@ -14,108 +14,139 @@
 %% Flags
 
 flag_plots = false;
-
+flag_bartp = false;
+flag_sound = true;
 
 
 %% Constants
 
-SpT = 400;                                                      % Samples per time-frame
+SpT = 512;                                                      % Samples per time-frame
+alpha = 0.98;                                                   % DD-weighting
+beta = 0.8;                                                     % Bias compensation smoothing factor
+
+var_est = 1;                                                    % Initial variance estimate (assuming white noise)
+sp_est = 0;                                                     % Initial estimate of the clean speech signal
 
 %% Loading audio & combining clean + noise
 
 Fs = 16000;                                                     % Sampling frequency of 16000 Hz (same for all)   
 
 [clean] = audioread('/audio/clean.wav');                        % Clean signal
-[noise1] = audioread('/audio/noise1.wav');                      % Noise 1
-[noise2] = audioread('/audio/intersection_soundjay.wav');       % Noise 2
+[noise] = audioread('/audio/noise1.wav');                       % Noise
 
-cleanpad = [clean; zeros(length(noise2)-length(clean),1)];      % Zero padding
+cleanpad = [clean; zeros(length(noise)-length(clean),1)];       % Zero padding
 
-noisy1 = clean + noise1;                                        % Noisy 1
-noisy2 = cleanpad + noise2;                                     % Noisy 2
+noisy = cleanpad + noise;                                       % Noisy 2
+
+noisy = [noisy; zeros(SpT-mod(length(noisy),SpT),1)];           % Zero pad to length, multiple of 512
 
 %% Signal Properties
 
     % Noise 1
-    L_clean = length(clean);
-    t_clean = L_clean/Fs;
-    T_clean = linspace(0,t_clean, L_clean)'*1000;
-
-    L_noise1 = length(noise1);
-    t_noise1 = L_noise1/Fs;
-    T_noise1 = linspace(0,t_noise1, L_noise1)'*1000;
-
-    L_noisy1 = length(noisy1);
-    t_noisy1 = L_noisy1/Fs;
-    T_noisy1 = linspace(0,t_noisy1, L_noisy1)'*1000;
-
-    % Noise 2
     L_cleanpad = length(cleanpad);
     t_cleanpad = L_cleanpad/Fs;
     T_cleanpad = linspace(0,t_cleanpad, L_cleanpad)'*1000;
 
-    L_noise2 = length(noise2);
-    t_noise2 = L_noise2/Fs;
-    T_noise2 = linspace(0,t_noise2, L_noise2)'*1000;
+    L_noise = length(noise);
+    t_noise = L_noise/Fs;
+    T_noise = linspace(0,t_noise, L_noise)'*1000;
 
-    L_noisy2 = length(noisy2);
-    t_noisy2 = L_noisy2/Fs;
-    T_noisy2 = linspace(0,t_noisy2, L_noisy2)'*1000;
+    L_noisy = length(noisy);
+    t_noisy = L_noisy/Fs;
+    T_noisy = linspace(0,t_noisy, L_noisy)'*1000;
 
-if(flag_plots)    
+if(flag_plots)  
+    hold on
     figure
-    subplot(3,2,1)
-    plot(T_clean, clean)
-    subplot(3,2,3)
-    plot(T_noise1, noise1)
-    subplot(3,2,5)
-    plot(T_noisy1, noisy1)
-    
-    subplot(3,2,2)
+    subplot(4,1,1)
     plot(T_cleanpad, cleanpad)
-    subplot(3,2,4)
-    plot(T_noise2, noise2)
-    subplot(3,2,6)
-    plot(T_noisy2, noisy2)
+    subplot(4,1,2)
+    plot(T_noise, noise)
+    subplot(4,1,3)
+    plot(T_noisy, noisy)
 end
 
 %% Segmentation
 
-f1 = ceil(L_noisy1/SpT);                                        % Number of frames Y1
-f2 = ceil(L_noisy2/SpT);                                        % Number of frames Y2
+f = L_noisy/SpT;                                                % Number of frames Y
 
-y1 = zeros(512, f1);                                            % Zero-padding
-y2 = zeros(512, f2);                                            % Zero-padding
+y = zeros(SpT,f);
 
-for i = 1:f1-1
-    y1(1 : SpT, i) = noisy1(SpT*(i-1)+1 : SpT*i, 1);            % Segmenting Y1
+for i = 1:f
+    y(1 : SpT, i) = noisy(SpT*(i-1)+1 : SpT*i, 1);              % Segmenting Y
 end
-y1(1 : L_noisy1-((f1-1)*SpT)+1, f1) = noisy1(((f1-1)*SpT) : L_noisy1, 1); 
-                                                                % Adding last frame  
-for i = 1:f2-1
-    y2(1 : SpT, i) = noisy2(SpT*(i-1)+1 : SpT*i, 1);            % Segmenting Y1
-end
-y2(1 : L_noisy2-((f2-1)*SpT)+1, f2) = noisy2(((f2-1)*SpT) : L_noisy2, 1); 
-                                                                % Adding last frame 
-
 %% DFT
 
-Y1 = fft(y1);
-Y2 = fft(y2);
+Y = fft(y);
 
 % Note: this does a fft for every column, so for every time frame
 
-%% A priori SNR using ML
+
+%% Algorithm
+
+% Bartlett Estimate
+
+P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
+
+% Computing the Bartlett estimate of the signal
+Bart_Y = sum(P_Y,2) / f;
+
+if(flag_bartp)
+    figure
+    plot(Bart_Y)
+end
+
+% Paper method
+
+for k=1:SpT
+    
+    var2(k,1) = var_est;
+    S_est(k,1) = sp_est;
+    
+    for i=2:f
+        magsY(k,i) = (abs(Y(k,i)))^2;
+        SNR_ML(k,i) = max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);             % Estimating SNR using ML
+        aPost(k,i) = magsY(k,i)/var2(k,i-1);                                  % A Posteriori SNR
+        PSD1(k,i) = ((1/((1+SNR_ML(k,i))^2)) + (SNR_ML(k,i)/((1+SNR_ML(k,i))*aPost(k,i)))) * magsY(k,i);
+        SNR_DD(k,i) = alpha * ((abs(S_est(k,i-1)))^2)/(PSD1(k,i)*SpT) + (1-alpha) * max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);
+        Binv(k,i) = (1 + SNR_DD(k,i)) * gammainc(2, (1/(1+SNR_DD(k,i)))) + exp(-1/(1+SNR_DD(k,i)));
+        B(k,i) = Binv(k,i)^(-1);
+        var1(k,i) = PSD1(k,i) * B(k,i);
+        var2(k,i) = beta * var2(k,i-1) + (1-beta) * var1(k,i);
+        PSD2(k,i) = var2(k,i)/SpT;
+        
+% Combining
+
+        Hr(k,i) = 1 - (PSD2(k,i) / Bart_Y(k));
+        S_est(k,i) = Hr(k,i) * Y(k,i);
+        
+        
+    end
+end
+
+%% Inverse FFT
+
+s_est = ifft(S_est);
+
+%% De-Segment:
+
+s = s_est(:);
+
+%% Add to plot
+
+if(flag_plots)
+
+    L_s = length(s);
+    t_s = L_s/Fs;
+    T_s = linspace(0,t_s, L_s)'*1000;
 
 
+    subplot(4,1,4)
+    plot(T_s, s)
+end
 
-%% PSD Estimation
 
-%% A priori SNR using DD
-
-%% Bias compensation
-
-%% Smoothing
-
-%% Locking prevention ?????????
-
+%% Sound output
+if(flag_sound)
+    sound(s,Fs)
+end
