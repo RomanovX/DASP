@@ -13,7 +13,7 @@
     
 %% Flags
 
-flag_plots = false;
+flag_plots = true;
 flag_bartp = false;
 flag_sound = true;
 
@@ -21,7 +21,7 @@ flag_sound = true;
 %% Constants
 
 SpT = 512;                                                      % Samples per time-frame
-alpha = 0.98;                                                   % DD-weighting
+alpha = 0.95;                                                   % DD-weighting
 beta = 0.8;                                                     % Bias compensation smoothing factor
 
 var_est = 1;                                                    % Initial variance estimate (assuming white noise)
@@ -57,7 +57,6 @@ noisy = [noisy; zeros(SpT-mod(length(noisy),SpT),1)];           % Zero pad to le
 
 if(flag_plots)  
     hold on
-    figure
     subplot(4,1,1)
     plot(T_cleanpad, cleanpad)
     subplot(4,1,2)
@@ -108,12 +107,12 @@ for k=1:SpT
         SNR_ML(k,i) = max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);             % Estimating SNR using ML
         aPost(k,i) = magsY(k,i)/var2(k,i-1);                                  % A Posteriori SNR
         PSD1(k,i) = ((1/((1+SNR_ML(k,i))^2)) + (SNR_ML(k,i)/((1+SNR_ML(k,i))*aPost(k,i)))) * magsY(k,i);
-        SNR_DD(k,i) = alpha * ((abs(S_est(k,i-1)))^2)/(PSD1(k,i)*SpT) + (1-alpha) * max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);
+        SNR_DD(k,i) = alpha * ((abs(S_est(k,i-1)))^2)/(var2(k,i-1)) + (1-alpha) * max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);
         Binv(k,i) = (1 + SNR_DD(k,i)) * gammainc(2, (1/(1+SNR_DD(k,i)))) + exp(-1/(1+SNR_DD(k,i)));
         B(k,i) = Binv(k,i)^(-1);
         var1(k,i) = PSD1(k,i) * B(k,i);
         var2(k,i) = beta * var2(k,i-1) + (1-beta) * var1(k,i);
-        PSD2(k,i) = var2(k,i)/SpT;
+        PSD2(k,i) = var2(k,i);
         
 % Combining
 
