@@ -21,7 +21,7 @@ if (nargin<3 | isstruct(IS))
 end
 W=fix(.025*fs); %Window length is 25 ms
 SP=.4; %Shift percentage is 40% (10ms) %Overlap-Add method works good with this value(.4)
-wnd=Modhanning(W);
+wnd=hamming(W);
 
 %IGNORE FROM HERE ...............................
 if (nargin>=3 & isstruct(IS))%This option is for compatibility with another programme
@@ -101,7 +101,7 @@ close(h);
 output=OverlapAdd2(X,YPhase,W,SP*W); %Overlap-add Synthesis of speech
 output=filter(1,[1 -pre_emph],output); %Undo the effect of Pre-emphasis
 
-function ReconstructedSignal=OverlapAdd2(XNEW,yphase,windowLen,ShiftLen);
+function ReconstructedSignal=Reconstruct(XNEW,yphase,windowLen,ShiftLen);
 
 %Y=OverlapAdd(X,A,W,S);
 %Y is the signal reconstructed signal from its spectrogram. X is a matrix

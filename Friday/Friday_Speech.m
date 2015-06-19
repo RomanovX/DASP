@@ -14,7 +14,7 @@
 %% Flags
 
 flag_plots = true;
-flag_bartp = false;
+flag_bartp = true;
 flag_sound = true;
 
 
@@ -23,6 +23,11 @@ flag_sound = true;
 SpT = 512;                                                      % Samples per time-frame
 alpha = 0.95;                                                   % DD-weighting
 beta = 0.8;                                                     % Bias compensation smoothing factor
+
+overlap = 0.5;
+
+var_est = 1;                                                    % Initial variance estimate (assuming white noise)
+sp_est = 0;                                                     % Initial estimate of the clean speech signal
 
 %% Loading audio & combining clean + noise
 
@@ -40,15 +45,15 @@ noisy = cleanpad + noise;                                       % Noisy 2
     % Noise 1
     L_cleanpad = length(cleanpad);
     t_cleanpad = L_cleanpad/Fs;
-    T_cleanpad = linspace(0,t_cleanpad, L_cleanpad)'*1000;
+    T_cleanpad = linspace(0,t_cleanpad, L_cleanpad)';
 
     L_noise = length(noise);
     t_noise = L_noise/Fs;
-    T_noise = linspace(0,t_noise, L_noise)'*1000;
+    T_noise = linspace(0,t_noise, L_noise)';
 
     L_noisy = length(noisy);
     t_noisy = L_noisy/Fs;
-    T_noisy = linspace(0,t_noisy, L_noisy)'*1000;
+    T_noisy = linspace(0,t_noisy, L_noisy)';
 
 if(flag_plots)  
     hold on
@@ -62,19 +67,18 @@ end
 
 %% Segmentation
 
-f = L_noisy/SpT;                                                % Number of frames Y
+Window = Modhanning(SpT);                                       % Modified Hanning curve
+OS = fix(SpT*overlap);                                          % Calculate number of overlapping samples
+N = fix((L_noisy-SpT)/OS +1);                                   % Number of segments
 
-y = zeros(SpT,f);
-
-for i = 1:f
-    y(1 : SpT, i) = noisy(SpT*(i-1)+1 : SpT*i, 1);              % Segmenting Y
-end
-
+Index = (repmat(1:SpT,N,1)+repmat((0:(N-1))'*OS,1,SpT))';       % Index of overlapping samples
+HW = repmat(Window,1,N);                                        % Hanning function copied for all segments
+noisy_seg = noisy(Index).*HW;                                         % Apply Hanning function on each segment
 
 
 %% DFT
 
-Y = fft(y);
+Y = fft(noisy_seg);
 
 % Note: this does a fft for every column, so for every time frame
 
@@ -86,15 +90,25 @@ Y = fft(y);
 P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
 
 % Computing the Bartlett estimate of the signal
-Bart_Y = sum(P_Y,2) / f;
+Bart_Y = sum(P_Y,2) / N;
 
 if(flag_bartp)
     figure
     plot(Bart_Y)
 end
-
+%%
 % Paper method
 h = waitbar(0, 'Waiting...');
+
+
+
+for i = 2:N
+   
+    
+end
+
+waitbar(i/SpT,h,num2str(fix(100*i/SpT)));
+
 
 for k=1:SpT
     
@@ -122,7 +136,7 @@ for k=1:SpT
         
     end
     
-    waitbar(k/SpT,h,num2str(fix(100*k/SpT)));
+    
 end
 
 %% Inverse FFT
