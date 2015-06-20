@@ -18,6 +18,7 @@ flag_bartp = true;
 flag_sound = true;
 
 
+
 %% Constants
 
 SpT = 512;                                                      % Samples per time-frame
@@ -26,8 +27,9 @@ beta = 0.8;                                                     % Bias compensat
 
 overlap = 0.5;
 
-var_est = 1;                                                    % Initial variance estimate (assuming white noise)
-sp_est = 0;                                                     % Initial estimate of the clean speech signal
+IS = 1;                                                         % Seconds of initial silence (no present speech)
+
+
 
 %% Loading audio & combining clean + noise
 
@@ -73,19 +75,39 @@ N = fix((L_noisy-SpT)/OS +1);                                   % Number of segm
 
 Index = (repmat(1:SpT,N,1)+repmat((0:(N-1))'*OS,1,SpT))';       % Index of overlapping samples
 HW = repmat(Window,1,N);                                        % Hanning function copied for all segments
-noisy_seg = noisy(Index).*HW;                                         % Apply Hanning function on each segment
+noisy_seg = noisy(Index).*HW;                                   % Apply Hanning function on each segment
 
 
 %% DFT
 
 Y = fft(noisy_seg);
-
 % Note: this does a fft for every column, so for every time frame
 
+% Spectogram:
 
-%% Algorithm
+Y_phase257 = angle((Y(1:fix(end/2)+1,:)));                       % Only looking at half because after is complex conjugate            
+Y_phase512 = angle(Y);
+Y_real257 = abs(Y(1:fix(end/2)+1,:)); 
+Y_real512 = abs(Y);
 
-% Bartlett Estimate
+magsY = Y_real512.^2;                                            % Square of magnitude
+
+%% Initializing
+
+IS_seg = fix((IS*Fs-SpT)/OS +1);                                 % Segments of Initial Silence (same formula as in Segmentation #3                                           
+
+NPS_mean = mean(Y_real512(:,1:IS_seg),2);                        % Mean of coeffs during speech absence
+NPS_var = var(Y_real512(:,1:IS_seg),0,2);                        % Variance of coeffs during speech absence
+
+PSD = zeros(size(Y));                                            % Initializing PSD
+PSD(:,1) = (NPS_var/SpT);                                        % Using variance/SpT as initial estimate
+
+aPost = ones(SpT,1);                                             % Initial value for a posteriori SNR
+
+S = zeros(size(Y));                                              % Assuming there is no speech in the initial segment
+
+
+%% Bartlett Estimate
 
 P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
 
@@ -96,56 +118,43 @@ if(flag_bartp)
     figure
     plot(Bart_Y)
 end
-%%
-% Paper method
+
+%% Paper method
 h = waitbar(0, 'Waiting...');
 
-
-
 for i = 2:N
-   
+    varN = PSD(:,i-1)*SpT;
+    SNR_ML = max(((magsY(:,i)./(PSD(:,i-1))) - 1), 0);                                   % Estimating a priori SNR using ML
+    aPost_new = magsY(:,i)./varN;                                                     % New a posteriori SNR (Assuming Noise PSD is relatively constant)
+    PSD_MMSE = ((1./((1+SNR_ML).^2)) + (SNR_ML./((1+SNR_ML).*aPost))) .* magsY(:,i);
+    SNR_DD = alpha*(abs(S(:,i-1)).^2./varN)+(1-alpha).*max(aPost_new-1,0);                          %Decision Directed Method for A Priori SNR
+    aPost = aPost_new;                                                 % Retains a posteriori SNR of current time frame for next
+    B = (1 + SNR_DD) .* gammainc(2, (1./SNR_DD)) + exp(-1./(1+SNR_DD));
+    B = B.^(-1);
+    BiasComp = PSD_MMSE .* B;
+    PSD(:,i) = beta * PSD(:,i-1) + (1-beta) * BiasComp;
+    
+    H = 1 - PSD(:,i)./Bart_Y;
+    
+    S(:,i) = H.*Y(:,i);
+    
+    waitbar(i/N,h,num2str(fix(100*i/N)));
     
 end
 
-waitbar(i/SpT,h,num2str(fix(100*i/SpT)));
+close(h);
 
+%% De-segment and IFFT
 
-for k=1:SpT
-    
-    var2(k,1) = var_est;
-    S_est(k,1) = sp_est;
-    
-    for i=2:f
-        magsY(k,i) = (abs(Y(k,i)))^2;
-        SNR_ML(k,i) = max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);             % Estimating SNR using ML
-        aPost(k,i) = magsY(k,i)/var2(k,i-1);                                  % A Posteriori SNR
-        PSD1(k,i) = ((1/((1+SNR_ML(k,i))^2)) + (SNR_ML(k,i)/((1+SNR_ML(k,i))*aPost(k,i)))) * magsY(k,i);
-        SNR_DD(k,i) = alpha * ((abs(S_est(k,i-1)))^2)/(var2(k,i-1)) + (1-alpha) * max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);
-        Binv(k,i) = (1 + SNR_DD(k,i)) * gammainc(2, (1/(1+SNR_DD(k,i)))) + exp(-1/(1+SNR_DD(k,i)));
-        B(k,i) = Binv(k,i)^(-1);
-        var1(k,i) = PSD1(k,i) * B(k,i);
-        var2(k,i) = beta * var2(k,i-1) + (1-beta) * var1(k,i);
-        PSD2(k,i) = var2(k,i);
-        
-% Combining
+Spec=S.*exp(1i * Y_phase512);
 
-        Hr(k,i) = 1 - (PSD2(k,i) / Bart_Y(k));
-        S_est(k,i) = Hr(k,i) * Y(k,i);
-        
-        
-        
-    end
-    
-    
+s = zeros((N-1)*OS+SpT,1);
+
+for i=1:N
+    start = (i-1)*OS+1;    
+    s(start:start+SpT-1)=s(start:start+SpT-1)+real(ifft(Spec(:,i),SpT));    
 end
 
-%% Inverse FFT
-
-s_est = ifft(S_est);
-
-%% De-Segment:
-
-s = s_est(:);
 
 %% Add to plot
 
@@ -166,4 +175,4 @@ if(flag_sound)
     sound(s,Fs)
 end
 
-close(h)
+%close(h)

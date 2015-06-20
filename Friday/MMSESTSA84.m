@@ -50,7 +50,7 @@ numberOfFrames=size(Y,2);
 FreqResol=size(Y,1);
 
 N=mean(Y(:,1:NIS)')'; %initial Noise Power Spectrum mean
-LambdaD=mean((Y(:,1:NIS)').^2)';%initial Noise Power Spectrum variance
+LambdaD=var(Y(:,1:NIS)')';%initial Noise Power Spectrum variance
 alpha=.99; %used in smoothing xi (For Deciesion Directed method for estimation of A Priori SNR)
 
 NoiseCounter=0;
@@ -101,7 +101,7 @@ close(h);
 output=OverlapAdd2(X,YPhase,W,SP*W); %Overlap-add Synthesis of speech
 output=filter(1,[1 -pre_emph],output); %Undo the effect of Pre-emphasis
 
-function ReconstructedSignal=Reconstruct(XNEW,yphase,windowLen,ShiftLen);
+function ReconstructedSignal=OverlapAdd2(XNEW,yphase,windowLen,ShiftLen);
 
 %Y=OverlapAdd(X,A,W,S);
 %Y is the signal reconstructed signal from its spectrogram. X is a matrix
