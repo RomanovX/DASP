@@ -109,17 +109,19 @@ S = zeros(size(Y));                                              % Assuming ther
 
 %% Bartlett Estimate
 
-% P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
-% 
-% % Computing the Bartlett estimate of the signal
-% Bart_Y = sum(P_Y,2) / N;
-% 
-% if(flag_bartp)
-%     figure
-%     plot(Bart_Y)
-% end
+ P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
+ 
+ % Computing the Bartlett estimate of the signal
+ Bart_Y = sum(P_Y,2) / N;
+ 
+ if(flag_bartp)
+     figure
+     plot(Bart_Y)
+ end
 
-Welch = pwelch(noisy_seg,SpT,OS, SpT);
+Welch = pwelch(noisy, Window, OS, SpT, Fs);
+
+%Welch = pwelch(noisy_seg,SpT,OS, SpT);
 Welch_flip = flipud(Welch);
 Welch512 = [Welch(1:end-1,:); Welch_flip(2:end, :)];
 
@@ -172,8 +174,9 @@ s = zeros((N-1)*OS+SpT,1);
 for i=1:N
     start = (i-1)*OS+1;    
     %s(start:start+SpT-1)=s(start:start+SpT-1)+real(ifft(Spec(:,i),SpT));  
-    s(start:start+SpT-1)=s(start:start+SpT-1)+stemp(:,i); 
+    s(start:start+SpT-1)=s(start:start+SpT-1)+abs(stemp(:,i)); 
 end
+
 
 
 %% Add to plot
