@@ -85,9 +85,9 @@ Y = fft(noisy_seg);
 
 % Spectogram:
 
-Y_phase257 = angle((Y(1:fix(end/2)+1,:)));                       % Only looking at half because after is complex conjugate            
+%Y_phase257 = angle((Y(1:fix(end/2)+1,:)));                       % Only looking at half because after is complex conjugate            
 Y_phase512 = angle(Y);
-Y_real257 = abs(Y(1:fix(end/2)+1,:)); 
+%Y_real257 = abs(Y(1:fix(end/2)+1,:)); 
 Y_real512 = abs(Y);
 
 magsY = Y_real512.^2;                                            % Square of magnitude
@@ -109,15 +109,22 @@ S = zeros(size(Y));                                              % Assuming ther
 
 %% Bartlett Estimate
 
-P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
+% P_Y = (abs(Y).^2)/SpT;                                           % Periodogram per segment
+% 
+% % Computing the Bartlett estimate of the signal
+% Bart_Y = sum(P_Y,2) / N;
+% 
+% if(flag_bartp)
+%     figure
+%     plot(Bart_Y)
+% end
 
-% Computing the Bartlett estimate of the signal
-Bart_Y = sum(P_Y,2) / N;
+Welch = pwelch(noisy_seg,SpT,OS, SpT);
+Welch_flip = flipud(Welch);
+Welch512 = [Welch(1:end-1,:); Welch_flip(2:end, :)];
 
-if(flag_bartp)
-    figure
-    plot(Bart_Y)
-end
+Welch_avg = mean(Welch512,2);
+
 
 %% Paper method
 h = waitbar(0, 'Waiting...');
@@ -134,9 +141,11 @@ for i = 2:N
     BiasComp = PSD_MMSE .* B;
     PSD(:,i) = beta * PSD(:,i-1) + (1-beta) * BiasComp;
     
-    H = 1 - PSD(:,i)./Bart_Y;
+    H = 1 - PSD(:,i)./Welch_avg;
     
     S(:,i) = H.*Y(:,i);
+    %S(:,i) = S(:,i).*exp(1j*Y_phase512(:,i));    
+  
     
     waitbar(i/N,h,num2str(fix(100*i/N)));
     
@@ -146,13 +155,24 @@ close(h);
 
 %% De-segment and IFFT
 
-Spec=S.*exp(1i * Y_phase512);
+stemp = ifft(S);
+
+%Spec=S.*exp(1i * Y_phase512);
+
+%Spec=S.*exp(1i*Y_phase512);
+
+%if mod(SpT,2) %if FreqResol is odd
+%     Spec=[Spec;flipud(conj(Spec(2:end,:)))];
+% else
+%     Spec=[Spec;flipud(conj(Spec(2:end-1,:)))];
+% end
 
 s = zeros((N-1)*OS+SpT,1);
 
 for i=1:N
     start = (i-1)*OS+1;    
-    s(start:start+SpT-1)=s(start:start+SpT-1)+real(ifft(Spec(:,i),SpT));    
+    %s(start:start+SpT-1)=s(start:start+SpT-1)+real(ifft(Spec(:,i),SpT));  
+    s(start:start+SpT-1)=s(start:start+SpT-1)+stemp(:,i); 
 end
 
 
