@@ -125,8 +125,6 @@ Welch = pwelch(noisy, Window, OS, SpT, Fs);
 Welch_flip = flipud(Welch);
 Welch512 = [Welch(1:end-1,:); Welch_flip(2:end, :)];
 
-Welch_avg = mean(Welch512,2);
-
 
 %% Paper method
 h = waitbar(0, 'Waiting...');
@@ -143,10 +141,7 @@ for i = 2:N
     BiasComp = PSD_MMSE .* B;
     PSD(:,i) = beta * PSD(:,i-1) + (1-beta) * BiasComp;
     
-    H = 1 - PSD(:,i)./Welch_avg;
-    
-    S(:,i) = H.*Y(:,i);
-    %S(:,i) = S(:,i).*exp(1j*Y_phase512(:,i));    
+     
   
     
     waitbar(i/N,h,num2str(fix(100*i/N)));
@@ -156,6 +151,16 @@ end
 close(h);
 
 %% De-segment and IFFT
+PSD_avg = mean(PSD,2);
+
+
+ H = 1 - PSD_avg./Welch512;
+    
+ for i = 1:N
+    S(:,i) = H.*Y(:,i);
+ end
+    %S(:,i) = S(:,i).*exp(1j*Y_phase512(:,i));  
+
 
 stemp = ifft(S);
 
@@ -191,6 +196,7 @@ if(flag_plots)
     subplot(4,1,4)
     plot(T_s, s)
 end
+
 
 
 %% Sound output
