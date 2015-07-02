@@ -66,8 +66,8 @@ f = L_noisy/SpT;                                                % Number of fram
 
 y = zeros(SpT,f);
 
-for i = 1:f
-    y(1 : SpT, i) = noisy(SpT*(i-1)+1 : SpT*i, 1);              % Segmenting Y
+for j = 1:f
+    y(1 : SpT, j) = noisy(SpT*(j-1)+1 : SpT*j, 1);              % Segmenting Y
 end
 
 
@@ -75,6 +75,8 @@ end
 %% DFT
 
 Y = fft(y);
+
+theta=angle(Y);
 
 % Note: this does a fft for every column, so for every time frame
 
@@ -98,26 +100,27 @@ h = waitbar(0, 'Waiting...');
 
 for k=1:SpT
     
-    var2(k,1) = var_est;
+%     var2(k,1) = var_est;
     S_est(k,1) = sp_est;
+    PSD2(k,1) = var_est / SpT;
     
-    for i=2:f
-        magsY(k,i) = (abs(Y(k,i)))^2;
-        SNR_ML(k,i) = max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);             % Estimating SNR using ML
-        aPost(k,i) = magsY(k,i)/var2(k,i-1);                                  % A Posteriori SNR
-        PSD1(k,i) = ((1/((1+SNR_ML(k,i))^2)) + (SNR_ML(k,i)/((1+SNR_ML(k,i))*aPost(k,i)))) * magsY(k,i);
-        SNR_DD(k,i) = alpha * ((abs(S_est(k,i-1)))^2)/(var2(k,i-1)) + (1-alpha) * max(((magsY(k,i)/(var2(k,i-1))) - 1), 0);
-        Binv(k,i) = (1 + SNR_DD(k,i)) * gammainc(2, (1/(1+SNR_DD(k,i)))) + exp(-1/(1+SNR_DD(k,i)));
-        B(k,i) = Binv(k,i)^(-1);
-        var1(k,i) = PSD1(k,i) * B(k,i);
-        var2(k,i) = beta * var2(k,i-1) + (1-beta) * var1(k,i);
-        PSD2(k,i) = var2(k,i);
+    for j=2:f
+        magsY(k,j) = (abs(Y(k,j)))^2;
+        SNR_ML(k,j) = max(((magsY(k,j)/(PSD2(k,j-1))) - 1), 0);             % Estimating SNR using ML [Hendriks MMSE]
+        aPost(k,j) = magsY(k,j)/PSD2(k,j-1);                                  % A Posteriori SNR
+        PSD1(k,j) = ((1/((1+SNR_ML(k,j))^2)) + (SNR_ML(k,j)/((1+SNR_ML(k,j))*aPost(k,j)))) * magsY(k,j);
+        SNR_DD(k,j) = alpha * ((abs(S_est(k,j-1)))^2)/(PSD2(k,j-1)) + (1-alpha) * max(((magsY(k,j)/(PSD2(k,j-1))) - 1), 0);
+        Binv(k,j) = (1 + SNR_DD(k,j)) * gammainc(2, (1/(1+SNR_DD(k,j)))) + exp(-1/(1+SNR_DD(k,j)));
+%         B(k,j) = Binv(k,j)^(-1);
+        PSD1(k,j) = PSD1(k,j)/Binv(k,j);
+        PSD2(k,j) = beta * PSD2(k,j-1) + (1-beta) * PSD1(k,j);
+%         PSD2(k,i) = var2(k,i);
         
 % Combining
 
-        Hr(k,i) = 1 - (PSD2(k,i) / Bart_Y(k));
-        S_est(k,i) = Hr(k,i) * Y(k,i);
-        
+        Hr(k,j) = max((1 - (PSD2(k,j) / Bart_Y(k))),0);
+        S_est(k,j) = Hr(k,j) *abs(Y(k,j));
+        S_est(k,j)=S_est(k,j)*exp(i*theta(k,j));
         
         
     end
@@ -127,11 +130,12 @@ end
 
 %% Inverse FFT
 
-s_est = ifft(S_est);
+s_est = real(ifft(S_est));
 
 %% De-Segment:
 
 s = s_est(:);
+
 
 %% Add to plot
 
